@@ -15,7 +15,7 @@ FROM
 JOIN 
     dba_tables t ON i.table_name = t.table_name AND i.owner = t.owner
 WHERE 
-    i.table_name IN ('GL_JE_LINES', 'GL_ARC_LINES_CSI_2020', 'GL_ARC_LINES_CSI_2021', 'GL_ARC_LINES_CSI_2022')
+    i.table_name IN ('GL_JE_LINES', 'xxx', 'xxx', 'xxxx')
     AND (t.degree > 1 OR i.degree > 1)
 ORDER BY 
     i.table_name, i.index_name;
