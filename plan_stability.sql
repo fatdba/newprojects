@@ -1,4 +1,3 @@
-
 SET SERVEROUTPUT ON;
 SET LINESIZE 155
 COL execs FOR 999,999,999
@@ -13,7 +12,7 @@ SET PAGESIZE 50000
 SET LINESIZE 150
 BREAK ON report
 BREAK ON plan_hash_value ON startup_time SKIP 1
-
+ 
 -- Main PL/SQL Block
 DECLARE
     -- Cursor for the first SQL query to get SQL_IDs
@@ -36,7 +35,7 @@ DECLARE
                     WHERE ss.instance_number = S.instance_number
                       AND executions_delta > 0
                       AND elapsed_time_delta > 0
-					  AND ss.begin_interval_time >= SYSDATE - 7  -- Last 7 days
+                      AND ss.begin_interval_time >= SYSDATE - 7  -- Last 7 days
                       AND s.snap_id > NVL('&earliest_snap_id', 0)
                     GROUP BY sql_id, plan_hash_value
                 )
@@ -46,16 +45,25 @@ DECLARE
             AND MAX(avg_etime) > NVL(TO_NUMBER('&min_etime'), .1)
             ORDER BY norm_stddev
         );
-
+ 
     sql_record sql_cursor%ROWTYPE;
     found_sql_id BOOLEAN := FALSE;  -- Declare the variable here
-
+ 
 BEGIN
     -- Print results of the additional query
-    DBMS_OUTPUT.PUT_LINE('Results from the additional SQL query:');
+    DBMS_OUTPUT.PUT_LINE('****************************************************************************************************'); -- Add two blank lines after each result set
+    DBMS_OUTPUT.PUT_LINE('****************************************************************************************************'); -- Add two blank lines after each result set
+	
+    DBMS_OUTPUT.PUT_LINE('Top SQLs in last 7 days with change in elapsed times and with standard deviation >= 2.');
+    DBMS_OUTPUT.PUT_LINE('****************************************************************************************************'); -- Add two blank lines after each result set
+    DBMS_OUTPUT.PUT_LINE('****************************************************************************************************'); -- Add two blank lines after each result set
+	
     DBMS_OUTPUT.PUT_LINE('SQL_ID         | Execs     | Min Elapsed Time | Max Elapsed Time | Norm Stddev');
     DBMS_OUTPUT.PUT_LINE('----------------|-----------|------------------|------------------|------------');
+    -- DBMS_OUTPUT.PUT_LINE('............'); -- Add two blank lines after each result set
+    -- DBMS_OUTPUT.PUT_LINE('............'); -- Add two blank lines after each result set
 
+ 
     FOR r IN (
         SELECT sql_id, SUM(execs) AS execs,
                MIN(avg_etime) AS min_etime,
@@ -73,7 +81,7 @@ BEGIN
                 WHERE ss.instance_number = S.instance_number 
                   AND executions_delta > 0
                   AND elapsed_time_delta > 0
-				  AND ss.begin_interval_time >= SYSDATE - 7  -- Last 7 days
+                  AND ss.begin_interval_time >= SYSDATE - 7  -- Last 7 days
                   AND s.snap_id > NVL('&earliest_snap_id', 0)
                 GROUP BY sql_id, plan_hash_value
             )
@@ -91,40 +99,46 @@ BEGIN
             LPAD(r.norm_stddev, 12)
         );
     END LOOP;
-
+ 
     -- Print a separator
     DBMS_OUTPUT.PUT_LINE('----------------|-----------|------------------|------------------|------------');
-
+    DBMS_OUTPUT.PUT_LINE('****************************************************************************************************'); -- Add two blank lines after each result set
+    DBMS_OUTPUT.PUT_LINE('****************************************************************************************************'); -- Add two blank lines after each result set
+	
+ 
     -- Print results of the first query
-    DBMS_OUTPUT.PUT_LINE('Results from the first query:');
+    DBMS_OUTPUT.PUT_LINE('Each of above identified top SQL with runtime details:');
+    DBMS_OUTPUT.PUT_LINE('****************************************************************************************************'); -- Add two blank lines after each result set
+    DBMS_OUTPUT.PUT_LINE('****************************************************************************************************'); -- Add two blank lines after each result set
+	
     DBMS_OUTPUT.PUT_LINE('SQL_ID');
     DBMS_OUTPUT.PUT_LINE('-------');
-
+ 
     FOR sql_record IN sql_cursor LOOP
         DBMS_OUTPUT.PUT_LINE(sql_record.sql_id);
         found_sql_id := TRUE;  -- Set flag to true if we found any SQL_IDs
-
+ 
         -- Execute the second query for each SQL_ID
         DECLARE
             v_sql_id VARCHAR2(13) := sql_record.sql_id;  -- Assuming SQL_ID is 13 characters long
-
+ 
             CURSOR sql_details_cursor IS
                 SELECT sql_id, plan_hash_value,
                        SUM(execs) AS execs,
                        SUM(etime) AS etime,
-                       CASE 
+                       CASE
                            WHEN SUM(execs) > 0 THEN SUM(etime) / SUM(execs) 
                            ELSE 0 
                        END AS avg_etime,
-                       CASE 
+                       CASE
                            WHEN SUM(execs) > 0 THEN SUM(cpu_time) / SUM(execs) 
                            ELSE 0 
                        END AS avg_cpu_time,
-                       CASE 
+                       CASE
                            WHEN SUM(execs) > 0 THEN SUM(lio) / SUM(execs) 
                            ELSE 0 
                        END AS avg_lio,
-                       CASE 
+                       CASE
                            WHEN SUM(execs) > 0 THEN SUM(pio) / SUM(execs) 
                            ELSE 0 
                        END AS avg_pio
@@ -140,14 +154,16 @@ BEGIN
                     WHERE sql_id = v_sql_id
                 )
                 GROUP BY sql_id, plan_hash_value;
-
+ 
             sql_details_record sql_details_cursor%ROWTYPE;
-
+ 
         BEGIN
             DBMS_OUTPUT.PUT_LINE('Results for SQL_ID: ' || v_sql_id);
             DBMS_OUTPUT.PUT_LINE('Plan Hash Value | Execs     | Total Elapsed Time | Avg Elapsed Time | Avg CPU Time | Avg LIO | Avg PIO');
-            DBMS_OUTPUT.PUT_LINE('----------------|-----------|--------------------|------------------|--------------|---------|--------');
-
+            DBMS_OUTPUT.PUT_LINE('----------------|-----------|--------------------|------------------|--------------|---------|-----------------');
+            -- DBMS_OUTPUT.PUT_LINE('............'); -- Add two blank lines after each result set
+            -- DBMS_OUTPUT.PUT_LINE('............'); -- Add two blank lines after each result set
+ 
             FOR sql_details_record IN sql_details_cursor LOOP
                 DBMS_OUTPUT.PUT_LINE(
                     RPAD(NVL(sql_details_record.plan_hash_value, 0), 12) || ' | ' ||  -- Use RPAD for formatting
@@ -159,25 +175,23 @@ BEGIN
                     LPAD(sql_details_record.avg_pio, 9)
                 );
             END LOOP;
-
-            DBMS_OUTPUT.PUT_LINE('----------------|-----------|--------------------|------------------|--------------|---------|--------');
+ 
+            DBMS_OUTPUT.PUT_LINE('----------------|-----------|--------------------|------------------|--------------|---------|------------------');
+            DBMS_OUTPUT.PUT_LINE('.'); -- Add two blank lines after each result set
+            DBMS_OUTPUT.PUT_LINE('.'); -- Add two blank lines after each result set
         EXCEPTION
             WHEN NO_DATA_FOUND THEN
                 DBMS_OUTPUT.PUT_LINE('No details found for SQL_ID: ' || v_sql_id);
         END;
     END LOOP;
-
+ 
     -- If no SQL_IDs were found
     IF NOT found_sql_id THEN
         DBMS_OUTPUT.PUT_LINE('No SQL_IDs found in the first query.');
     END IF;
-
+ 
 EXCEPTION
     WHEN OTHERS THEN
         DBMS_OUTPUT.PUT_LINE('An error occurred: ' || SQLERRM);
 END;
 /
-
-
-
-
