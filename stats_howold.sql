@@ -55,3 +55,25 @@ FROM (
 WHERE stats = 'STALE'
 GROUP BY owner;
 
+==============
+
+SELECT 
+    owner,
+    SUM(CASE 
+            WHEN last_analyzed IS NOT NULL AND last_analyzed > SYSDATE - 31 THEN 1 
+            ELSE 0 
+        END) AS fresh_table_count,
+    SUM(CASE 
+            WHEN last_analyzed IS NULL OR last_analyzed <= SYSDATE - 31 THEN 1 
+            ELSE 0 
+        END) AS stale_table_count,
+    COUNT(*) AS total_table_count
+FROM 
+    dba_tables
+WHERE 
+    owner IN ('CSUSER', 'NNUSER')
+GROUP BY 
+    owner
+ORDER BY 
+    owner;
+
