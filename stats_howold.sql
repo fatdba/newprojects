@@ -15,3 +15,20 @@ WHERE
     owner IN ('CSUSER', 'NNUSER')
 ORDER BY 
     owner, table_name;
+
+
+==========
+
+SELECT owner, COUNT(*) AS stale_table_count
+FROM (
+  SELECT owner,
+         CASE
+           WHEN last_analyzed IS NOT NULL AND last_analyzed > SYSDATE - 31 THEN 'FRESH'
+           ELSE 'STALE'
+         END AS stats
+  FROM dba_tables
+  WHERE owner IN ('CSUSER', 'NNUSER')
+)
+WHERE stats = 'STALE'
+GROUP BY owner;
+
