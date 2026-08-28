@@ -1,0 +1,257 @@
+Here’s a concise, client-shareable cheat sheet.
+
+**Main wrapper:** `/defrag/tools/ptosc_restartable_defrag_PREPROD_FINAL.sh` — restartable pt-online-schema-change automation with validation, resume logic, trigger handling, MDL watchdog, and retained `_old` table support.
+
+**Monitor:** `/defrag/tools/ptosc_monitor.sh` — real-time monitor for copy progress, load, objects, triggers, MDL, file sizes, logs, and restart state.
+
+**Discovery script:** `/defrag/tools/fragmentation_discovery.sh` — read-only candidate discovery and fragmentation assessment.
+
+**Percona binary:** `/defrag/tools/percona-toolkit-3.x/bin/pt-online-schema-change` — underlying pt-online-schema-change executable.
+
+**Connection/config file:** `/root/ptosc/ptosc.cnf` — MySQL connection configuration used by the wrapper.
+
+**Runtime base directory:** `/root/ptosc/<SCHEMA>.<TABLE>/<TIMESTAMP>/` — per-run runtime/state/log directory.
+
+**Wrapper console log:** `/defrag/tools/<SCHEMA>.<TABLE>.restartable.nohup.out` — high-level wrapper execution and state-transition log.
+
+**pt-osc detailed log:** `/root/ptosc/<SCHEMA>.<TABLE>/<TIMESTAMP>/pt-online-schema-change.log` — detailed Percona copy/cutover log.
+
+**Final validation:** `/root/ptosc/<SCHEMA>.<TABLE>/<TIMESTAMP>/final-validation.txt` — post-cutover size, filesystem, statistics, and validation evidence.
+
+**MDL blocker log:** `/root/ptosc/<SCHEMA>.<TABLE>/<TIMESTAMP>/killed-blockers.log` — records sessions killed by the metadata-lock watchdog.
+
+**PID file:** `/root/ptosc/<SCHEMA>.<TABLE>/<TIMESTAMP>/ptosc.pid` — running pt-osc process ID.
+
+**Pause file:** `/root/ptosc/<SCHEMA>.<TABLE>/<TIMESTAMP>/pause.flag` — pause control used by pt-osc.
+
+**History table:** `percona.pt_osc_history` — stores restart/resume boundaries and job completion state.
+
+**Active table file:** `/var/lib/mysql/<SCHEMA>/<TABLE>.ibd` — live InnoDB table.
+
+**Temporary copy:** `/var/lib/mysql/<SCHEMA>/_<TABLE>_new.ibd` — shadow table during copy.
+
+**Retained original:** `/var/lib/mysql/<SCHEMA>/_<TABLE>_old.ibd` — original table retained after successful cutover.
+
+**Binary logs:** `/var/lib/mysql-binlog/` — MySQL binary-log filesystem.
+
+**Relay logs:** `/var/lib/mysql-relaylog/` — replica relay-log filesystem.
+
+### Generic execution
+
+```bash
+AUTO_DROP_OLD=0 \
+nohup /defrag/tools/ptosc_restartable_defrag_PREPROD_FINAL.sh \
+<SCHEMA> <TABLE> \
+> /defrag/tools/<SCHEMA>.<TABLE>.restartable.nohup.out 2>&1 &
+```
+
+Get PID:
+
+```bash
+echo $!
+```
+
+Follow wrapper output:
+
+```bash
+tail -200f /defrag/tools/<SCHEMA>.<TABLE>.restartable.nohup.out
+```
+
+### Generic monitor
+
+```bash
+cd /defrag/tools
+./ptosc_monitor.sh <SCHEMA> <TABLE> 40
+```
+
+Check running processes:
+
+```bash
+pgrep -af pt-online-schema-change
+```
+
+```bash
+ps -ef | grep ptosc_restartable | grep -v grep
+```
+
+### Locate latest runtime directory
+
+```bash
+ls -ltr /root/ptosc/<SCHEMA>.<TABLE>/
+```
+
+Set latest run:
+
+```bash
+RUN=$(ls -1dt /root/ptosc/<SCHEMA>.<TABLE>/* | head -1)
+echo "$RUN"
+```
+
+List all runtime files:
+
+```bash
+ls -lah "$RUN"
+```
+
+### View important logs
+
+Wrapper log:
+
+```bash
+tail -100 /defrag/tools/<SCHEMA>.<TABLE>.restartable.nohup.out
+```
+
+pt-osc log:
+
+```bash
+tail -100 "$RUN/pt-online-schema-change.log"
+```
+
+Final validation:
+
+```bash
+cat "$RUN/final-validation.txt"
+```
+
+Killed blockers:
+
+```bash
+cat "$RUN/killed-blockers.log"
+```
+
+PID:
+
+```bash
+cat "$RUN/ptosc.pid"
+```
+
+### Check table files
+
+```bash
+ls -lh /var/lib/mysql/<SCHEMA>/*<TABLE>*
+```
+
+Exact bytes:
+
+```bash
+stat -c '%n %s bytes' /var/lib/mysql/<SCHEMA>/*<TABLE>*
+```
+
+### Check active/new/old objects
+
+```sql
+SELECT TABLE_NAME
+FROM information_schema.TABLES
+WHERE TABLE_SCHEMA='<SCHEMA>'
+AND TABLE_NAME IN (
+    '<TABLE>',
+    '_<TABLE>_new',
+    '_<TABLE>_old'
+);
+```
+
+### Check pt-osc triggers
+
+```sql
+SELECT
+    TRIGGER_SCHEMA,
+    TRIGGER_NAME,
+    EVENT_OBJECT_TABLE
+FROM information_schema.TRIGGERS
+WHERE TRIGGER_SCHEMA='<SCHEMA>'
+AND TRIGGER_NAME LIKE 'pt_osc_%<TABLE>%';
+```
+
+### Check table sizes
+
+```sql
+SET SESSION information_schema_stats_expiry=0;
+
+SELECT
+    TABLE_NAME,
+    TABLE_ROWS,
+    ROUND(DATA_LENGTH/1024/1024/1024,2) AS DATA_GIB,
+    ROUND(INDEX_LENGTH/1024/1024/1024,2) AS INDEX_GIB,
+    ROUND((DATA_LENGTH+INDEX_LENGTH)/1024/1024/1024,2) AS TOTAL_GIB,
+    ROUND(DATA_FREE/1024/1024/1024,2) AS DATA_FREE_GIB
+FROM information_schema.TABLES
+WHERE TABLE_SCHEMA='<SCHEMA>'
+AND TABLE_NAME IN (
+    '<TABLE>',
+    '_<TABLE>_new',
+    '_<TABLE>_old'
+);
+```
+
+### Check history/restartability
+
+```sql
+SELECT
+    job_id,
+    db,
+    tbl,
+    new_table_name,
+    done,
+    ts,
+    lower_boundary,
+    upper_boundary
+FROM percona.pt_osc_history
+WHERE db='<SCHEMA>'
+AND tbl='<TABLE>'
+ORDER BY job_id DESC;
+```
+
+### Check filesystem capacity
+
+```bash
+df -kh /var/lib/mysql
+```
+
+```bash
+df -kh /var/lib/mysql-binlog
+```
+
+```bash
+df -kh /var/lib/mysql-relaylog
+```
+
+### Replica monitoring
+
+```sql
+SHOW REPLICA STATUS\G
+```
+
+Important fields:
+
+```text
+Replica_IO_Running
+Replica_SQL_Running
+Seconds_Behind_Source
+Source_Log_File
+Relay_Source_Log_File
+Relay_Log_Space
+Last_IO_Error
+Last_SQL_Error
+```
+
+### Successful completion state
+
+Expected:
+
+```text
+<TABLE>       EXISTS
+_<TABLE>_new  MISSING
+_<TABLE>_old  EXISTS
+pt-osc triggers = 0
+done = yes
+```
+
+### Post-validation cleanup
+
+After application validation and replica lag reaches zero, drop the retained original on the **source/master only**:
+
+```sql
+DROP TABLE <SCHEMA>._<TABLE>_old;
+```
+
+Then allow that DROP to replicate naturally to the replica.
