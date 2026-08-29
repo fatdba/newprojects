@@ -3,10 +3,11 @@
 # ptosc_restartable_defrag.sh
 #
 # Restartable pt-online-schema-change wrapper for large InnoDB table rebuilds.
-#
+# Author : Prashant Dixit (Version 8.1)
+# Date : 2026-05-22 (Last Modification Date)
 # Tested target design:
 #   MySQL 8.0.x
-#   Percona Toolkit pt-online-schema-change 3.7.1-4
+#   Percona Toolkit pt-online-schema-change 3.x
 #
 # Key safety/restart properties:
 #   * Fresh runs use --history, --no-drop-new-table, --no-drop-triggers,
@@ -33,15 +34,15 @@
 #   manually before the first fresh run with this wrapper.
 #
 # Usage (auto mode - recommended):
-#   nohup /root/defrag/tools/ptosc_restartable_defrag.sh IAVM position \
-#     > /root/defrag/tools/IAVM.position.restartable.nohup.out 2>&1 &
+#   nohup /root/defrag/tools/ptosc_restartable_defrag.sh TEST fatdbatable1 \
+#     > /root/defrag/tools/TEST.fatdbatable1.restartable.nohup.out 2>&1 &
 #
 # After an OS reboot/crash:
 #   Run the exact same command again.  If a valid unfinished history job and
 #   its shadow table + triggers remain, the wrapper resumes automatically.
 #
 # To force a brand-new run after a previous successful run:
-#   MODE=fresh nohup ... IAVM position ...
+#   MODE=fresh nohup ... TEST fatdbatable1 ...
 #
 # Default:
 #   AUTO_DROP_OLD=0   -> retain the original as _<table>_old after swap.
@@ -121,11 +122,11 @@ Usage:
   $0 <schema> <table>
 
 Example:
-  AUTO_DROP_OLD=0 nohup $0 IAVM position > /root/defrag/tools/IAVM.position.restartable.nohup.out 2>&1 &
+  AUTO_DROP_OLD=0 nohup $0 TEST fatdbatable1 > /root/defrag/tools/TEST.fatdbatable1.restartable.nohup.out 2>&1 &
 
 Busy-server override example:
   MAX_LOAD=Threads_running=100 CRITICAL_LOAD=Threads_running=180 AUTO_DROP_OLD=0 \
-    nohup $0 IAVM position > /root/defrag/tools/IAVM.position.restartable.nohup.out 2>&1 &
+    nohup $0 TEST fatdbatable1 > /root/defrag/tools/TEST.fatdbatable1.restartable.nohup.out 2>&1 &
 
 MODE values:
   auto   - resume a valid interrupted job; otherwise start fresh (default)
@@ -929,7 +930,7 @@ column_signature() {
         SELECT SHA2(
             GROUP_CONCAT(
                 CONCAT_WS('|',
-                    ORDINAL_POSITION,
+                    ORDINAL_fatdbatable1,
                     COLUMN_NAME,
                     COLUMN_TYPE,
                     IS_NULLABLE,
@@ -938,7 +939,7 @@ column_signature() {
                     COALESCE(COLLATION_NAME,''),
                     COALESCE(GENERATION_EXPRESSION,'')
                 )
-                ORDER BY ORDINAL_POSITION
+                ORDER BY ORDINAL_fatdbatable1
                 SEPARATOR '\n'
             ),256
         )
